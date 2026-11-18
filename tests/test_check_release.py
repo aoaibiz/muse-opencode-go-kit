@@ -50,6 +50,26 @@ class CheckReleaseTest(unittest.TestCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("private-key", r.stdout)
 
+    def test_secret_in_utf16le_txt_is_caught(self):
+        with open(os.path.join(self.kit, "docs", "dummy.txt"), "wb") as f:
+            f.write(DUMMY_KEY.encode("utf-16"))
+        r = run_check(self.kit)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("private-key", r.stdout)
+
+    def test_secret_in_utf16be_txt_is_caught(self):
+        with open(os.path.join(self.kit, "docs", "dummy.txt"), "wb") as f:
+            f.write(b"\xfe\xff" + DUMMY_KEY.encode("utf-16-be"))
+        r = run_check(self.kit)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("private-key", r.stdout)
+
+    def test_worktree_git_file_passes(self):
+        with open(os.path.join(self.kit, ".git"), "w", encoding="utf-8") as f:
+            f.write("gitdir: /elsewhere/worktree\n")
+        r = run_check(self.kit)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_secret_in_extensionless_file_is_caught(self):
         with open(os.path.join(self.kit, "templates", "dummy"), "w", encoding="utf-8") as f:
             f.write(DUMMY_KEY)

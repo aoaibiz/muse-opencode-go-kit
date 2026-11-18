@@ -57,7 +57,14 @@ def main():
                 problems.append("manifest に載っていない payload ファイル: " + rel)
 
     # 2. 混入パターンの走査（全ファイルをバイト列で調べる。拡張子で除外しない）
-    #    と、文書リンクの検査
+    #    と、文書リンクの検査。UTF-16（BOM で判定できる物）は通常の文字列へ
+    #    直してから同じパターンで調べる。.git はフォルダーでもファイル
+    #    （worktree）でも対象外にする。
+    def decode_text(data):
+        if data.startswith(b"\xff\xfe") or data.startswith(b"\xfe\xff"):
+            return data.decode("utf-16")
+        return data.decode("utf-8")
+
     for dirpath, dirnames, filenames in os.walk(root):
         if ".git" in dirnames:
             dirnames.remove(".git")
@@ -66,13 +73,25 @@ def main():
         for name in filenames:
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
+            if rel == ".git":
+                continue
             with open(full, "rb") as f:
                 data = f.read()
+            blobs = [data]
+            text = None
+            try:
+                text = decode_text(data)
+                if text.encode("utf-8") != data:
+                    blobs.append(text.encode("utf-8"))
+            except UnicodeDecodeError:
+                text = None
             for label, pattern in FORBIDDEN:
-                if pattern.search(data):
+                if any(pattern.search(b) for b in blobs):
                     problems.append("混入パターン %s: %s" % (label, rel))
             if name.endswith(".md"):
-                text = data.decode("utf-8")
+                if text is None:
+                    problems.append("UTF-8／UTF-16 として読めない文書: %s" % rel)
+                    continue
                 for m in LINK_RE.finditer(text):
                     url = m.group(1).strip()
                     if url.startswith(("http://", "https://", "#", "mailto:")):
@@ -116,6 +135,8 @@ def main():
         for name in filenames:
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
+            if rel == ".git":
+                continue
             if rel in allowed_root or any(rel.startswith(d) for d in allowed_dirs):
                 continue
             problems.append("許可リストに無いファイル: " + rel)

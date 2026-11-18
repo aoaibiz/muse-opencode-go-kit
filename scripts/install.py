@@ -214,6 +214,10 @@ def ensure_state_dir(target_dir):
         raise KitError("SYMLINK_REFUSED", "inspect", "状態ディレクトリがシンボリックリンクです")
     if os.path.isdir(sd):
         assert_safe_path(target_dir, sd, STATE_DIR_NAME)
+        try:
+            os.chmod(sd, 0o700)
+        except OSError:
+            pass
         return sd
     os.makedirs(sd, mode=0o700)
     try:
@@ -221,6 +225,44 @@ def ensure_state_dir(target_dir):
     except OSError:
         pass
     return sd
+
+
+def migrate_permissions(target_dir):
+    """旧版が作った状態フォルダーとバックアップの権限を、安全側へ移す。
+
+    旧版は状態フォルダーを 0755、バックアップを 0644 で残すことがある。
+    更新（apply）の時に、境界検査を通したうえで、フォルダーは 0700、
+    ファイルは 0600 へ寄せる。失敗したら黙って成功扱いにせず、エラーで止める。
+    """
+    sd = ensure_state_dir(target_dir)
+
+    def tighten(path, mode, label):
+        if os.path.islink(path):
+            raise KitError("SYMLINK_REFUSED", "inspect", "シンボリックリンクは扱いません: " + label)
+        try:
+            os.chmod(path, mode)
+        except OSError:
+            raise KitError("PERMISSION_MIGRATION_FAILED", "apply", "権限の移行に失敗しました: " + label)
+
+    tighten(sd, 0o700, STATE_DIR_NAME)
+    spath = os.path.join(sd, "state.json")
+    if os.path.lexists(spath):
+        tighten(spath, 0o600, "state.json")
+    backup_dir = os.path.join(sd, "backup")
+    if os.path.lexists(backup_dir):
+        if os.path.islink(backup_dir) or not os.path.isdir(backup_dir):
+            raise KitError("SYMLINK_REFUSED", "inspect", "バックアップ先がシンボリックリンクです")
+        assert_safe_path(target_dir, backup_dir, "backup")
+        tighten(backup_dir, 0o700, "backup")
+        for root, dirs, files in os.walk(backup_dir):
+            for d in dirs:
+                p = os.path.join(root, d)
+                assert_safe_path(target_dir, p, "backup")
+                tighten(p, 0o700, "backup")
+            for f in files:
+                p = os.path.join(root, f)
+                assert_safe_path(target_dir, p, "backup")
+                tighten(p, 0o600, "backup")
 
 
 def compute_plan(kit_dir, target_dir):
@@ -301,20 +343,21 @@ def cmd_apply(kit_dir, target_dir):
     _, files = payload_files(kit_dir)
     ensure_state_dir(target_dir)
     lock = acquire_lock(target_dir)
-    backup_dir = os.path.join(ensure_state_dir(target_dir), "backup")
-    if os.path.islink(backup_dir):
-        raise KitError("SYMLINK_REFUSED", "inspect", "バックアップ先がシンボリックリンクです")
-    state = load_state(target_dir) or {"files": {}}
-    state["status"] = "PARTIAL"
-    state["version"] = manifest["version"]
-    state.setdefault("existed", {})
-    state.setdefault("applied_hashes", {})
-    for rel, _action in plan:
-        dest0 = target_paths(target_dir, rel)
-        if rel not in state["existed"]:
-            state["existed"][rel] = os.path.isfile(dest0)
-    save_state(target_dir, state)
     try:
+        migrate_permissions(target_dir)
+        backup_dir = os.path.join(ensure_state_dir(target_dir), "backup")
+        if os.path.islink(backup_dir):
+            raise KitError("SYMLINK_REFUSED", "inspect", "バックアップ先がシンボリックリンクです")
+        state = load_state(target_dir) or {"files": {}}
+        state["status"] = "PARTIAL"
+        state["version"] = manifest["version"]
+        state.setdefault("existed", {})
+        state.setdefault("applied_hashes", {})
+        for rel, _action in plan:
+            dest0 = target_paths(target_dir, rel)
+            if rel not in state["existed"]:
+                state["existed"][rel] = os.path.isfile(dest0)
+        save_state(target_dir, state)
         payload_agents = read_bytes(files["AGENTS.md"]).decode("utf-8")
         for rel, action in plan:
             dest = target_paths(target_dir, rel)
@@ -356,8 +399,6 @@ def cmd_apply(kit_dir, target_dir):
             save_state(target_dir, state)
         state["status"] = "INSTALLED"
         save_state(target_dir, state)
-    except BaseException:
-        raise
     finally:
         release_lock(lock)
     print("apply: ok (version %s)" % manifest["version"])
@@ -369,6 +410,7 @@ def cmd_verify(kit_dir, target_dir):
     problems = []
     payload_agents = read_bytes(files["AGENTS.md"]).decode("utf-8")
     dest = os.path.join(target_dir, "AGENTS.md")
+    assert_safe_path(target_dir, dest, "AGENTS.md")
     if not os.path.isfile(dest):
         problems.append("AGENTS.md がありません")
     else:

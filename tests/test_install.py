@@ -195,6 +195,58 @@ class InstallTest(unittest.TestCase):
         self.assertIn("STATE_BROKEN", r.stderr)
         self.assertNotIn("Traceback", r.stderr)
 
+    def test_upgrade_repairs_old_permissions(self):
+        import stat as stat_mod
+        with open(os.path.join(self.target, "AGENTS.md"), "w", encoding="utf-8") as f:
+            f.write("# 既存\n")
+        os.chmod(os.path.join(self.target, "AGENTS.md"), 0o600)
+        self.apply()
+        sd = os.path.join(self.target, ".muse-window-kit")
+        backup_dir = os.path.join(sd, "backup")
+        backup_file = os.path.join(backup_dir, "AGENTS.md")
+        self.assertTrue(os.path.isfile(backup_file))
+        # 旧版が残した広い権限を再現する
+        os.chmod(sd, 0o755)
+        os.chmod(backup_dir, 0o755)
+        os.chmod(backup_file, 0o644)
+        self.apply()
+        self.assertEqual(stat_mod.S_IMODE(os.stat(sd).st_mode), 0o700)
+        self.assertEqual(stat_mod.S_IMODE(os.stat(backup_dir).st_mode), 0o700)
+        self.assertEqual(stat_mod.S_IMODE(os.stat(backup_file).st_mode), 0o600)
+        r = run_install("verify", "--target", self.target)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        r = run_install("rollback", "--target", self.target)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_lock_released_after_refusal(self):
+        outside = os.path.join(self.tmp, "outside")
+        os.makedirs(outside)
+        with open(os.path.join(self.target, "AGENTS.md"), "w", encoding="utf-8") as f:
+            f.write("# 既存\n")
+        self.apply()
+        sd = os.path.join(self.target, ".muse-window-kit")
+        backup_dir = os.path.join(sd, "backup")
+        shutil.rmtree(backup_dir)
+        os.symlink(outside, backup_dir)
+        r = run_install("apply", "--target", self.target)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("SYMLINK_REFUSED", r.stderr)
+        self.assertFalse(os.path.lexists(os.path.join(sd, "lock")))
+        os.unlink(backup_dir)
+        os.makedirs(backup_dir)
+        r = run_install("apply", "--target", self.target)
+        self.assertEqual(r.returncode, 0, r.stderr)
+
+    def test_verify_refuses_agents_symlink(self):
+        self.apply()
+        agents = os.path.join(self.target, "AGENTS.md")
+        copy_path = os.path.join(self.tmp, "agents-copy.md")
+        shutil.copyfile(agents, copy_path)
+        os.unlink(agents)
+        os.symlink(copy_path, agents)
+        r = run_install("verify", "--target", self.target)
+        self.assertNotEqual(r.returncode, 0)
+
     def test_lock_blocks_apply(self):
         os.makedirs(os.path.join(self.target, ".muse-window-kit", "lock"))
         r = run_install("apply", "--target", self.target)
