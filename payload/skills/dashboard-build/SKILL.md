@@ -5,7 +5,7 @@ description: 状態を見る画面（ダッシュボードやランチャー）�
 
 # ダッシュボードを作る
 
-詳しい作り方は https://github.com/aoaibiz/muse-opencode-go-kit/blob/main/docs/DASHBOARD.md にあります。ここは着手と完成判定の要点です。
+詳しい作り方は https://github.com/aoaibiz/muse-opencode-go-kit/blob/d2e6bd388007527c1fe34e03fe0a05c7c5773a28/docs/DASHBOARD.md にあります。ここは着手と完成判定の要点です。
 
 ## 着手前
 

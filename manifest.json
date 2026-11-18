@@ -1,11 +1,11 @@
 {
-  "version": "0.1.0",
+  "version": "0.1.1",
   "files": {
     "AGENTS.md": "fa77d3872ea2c844e6bcbbb2508780dadad2fb26da17362d46dec112a42e8f60",
     "skills/window-intake-operations/SKILL.md": "99cb3a7d430591219a4f720cc8600c1ec5559626ea6863bb7024cb425292a009",
-    "skills/dashboard-build/SKILL.md": "5bdaec088bb10b1a999b3f5743129492f9e79fa24d59324f12a2e725406cb21b",
-    "skills/usage-realtime-display/SKILL.md": "f31dcb5f9f2b8ac2d18367f759c44ce35e429062e77da4f02ce791e4b993560a",
-    "skills/model-routing-and-swap/SKILL.md": "06e2a3dcf6b36bf691efc04de502208daf662cbe04df79d4f2229c4980d2effd",
+    "skills/dashboard-build/SKILL.md": "1d426304369748908b746e26382f9754492e7ce5c0e81219876f2da1a2ea977f",
+    "skills/usage-realtime-display/SKILL.md": "04c796326075b43bd05b7f76259a2a4240215a35c5efc239b19c56ba3a14f322",
+    "skills/model-routing-and-swap/SKILL.md": "95948650c5881810e525d675f29972730510f7e59d1e57840570893420643396",
     "skills/production-verification/SKILL.md": "f2875df03bf38416affc585bd24b377b1bc72169e5750121640e57ce0b3b1acf"
   }
 }

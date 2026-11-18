@@ -201,6 +201,74 @@ class InstallTest(unittest.TestCase):
         self.assertEqual(r.returncode, 2)
         self.assertIn("LOCKED", r.stderr)
 
+    @unittest.skipIf(os.name == "nt", "ファイルモードは POSIX 前提")
+    def test_backup_preserves_mode_and_state_dir_0700(self):
+        agents = os.path.join(self.target, "AGENTS.md")
+        with open(agents, "w", encoding="utf-8") as f:
+            f.write("# 秘密の社内ルール\n")
+        os.chmod(agents, 0o600)
+        self.apply()
+        backup = os.path.join(self.target, ".muse-window-kit", "backup", "AGENTS.md")
+        self.assertEqual(os.stat(backup).st_mode & 0o777, 0o600)
+        sd = os.path.join(self.target, ".muse-window-kit")
+        self.assertEqual(os.stat(sd).st_mode & 0o777, 0o700)
+
+    @unittest.skipIf(os.name == "nt", "シンボリックリンクは POSIX 前提")
+    def test_state_dir_symlink_refused(self):
+        outside = os.path.join(self.tmp, "outside")
+        os.makedirs(outside)
+        os.symlink(outside, os.path.join(self.target, ".muse-window-kit"))
+        r = run_install("apply", "--target", self.target)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("SYMLINK_REFUSED", r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(outside, "state.json")))
+
+    @unittest.skipIf(os.name == "nt", "シンボリックリンクは POSIX 前提")
+    def test_dangling_backup_link_refused(self):
+        agents = os.path.join(self.target, "AGENTS.md")
+        with open(agents, "w", encoding="utf-8") as f:
+            f.write("# 既存\n")
+        backup_dir = os.path.join(self.target, ".muse-window-kit", "backup")
+        os.makedirs(backup_dir)
+        outside_file = os.path.join(self.tmp, "outside-new-file.md")
+        os.symlink(outside_file, os.path.join(backup_dir, "AGENTS.md"))
+        r = run_install("apply", "--target", self.target)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("SYMLINK_REFUSED", r.stderr)
+        self.assertFalse(os.path.exists(outside_file))
+
+    @unittest.skipIf(os.name == "nt", "シンボリックリンクは POSIX 前提")
+    def test_rollback_parent_symlink_refused_outside_intact(self):
+        self.apply()
+        skills = os.path.join(self.target, "skills")
+        outside = os.path.join(self.tmp, "outside-skills")
+        shutil.move(skills, outside)
+        os.symlink(outside, skills)
+        r = run_install("rollback", "--target", self.target)
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("SYMLINK_REFUSED", r.stderr)
+        count = 0
+        for _dp, _dn, fn in os.walk(outside):
+            count += len([x for x in fn if x == "SKILL.md"])
+        self.assertEqual(count, 5)
+
+    def test_manifest_path_traversal_refused(self):
+        fake_kit = os.path.join(self.tmp, "evil-kit")
+        shutil.copytree(os.path.join(ROOT, "payload"), os.path.join(fake_kit, "payload"))
+        shutil.copytree(os.path.join(ROOT, "scripts"), os.path.join(fake_kit, "scripts"))
+        with open(os.path.join(ROOT, "manifest.json"), encoding="utf-8") as f:
+            manifest = json.load(f)
+        manifest["files"]["../evil.md"] = "0" * 64
+        with open(os.path.join(fake_kit, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump(manifest, f)
+        r = subprocess.run(
+            [sys.executable, os.path.join(fake_kit, "scripts", "install.py"),
+             "plan", "--target", self.target, "--kit", fake_kit],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        self.assertEqual(r.returncode, 2)
+        self.assertIn("MANIFEST_BROKEN", r.stderr)
+
     def test_non_utf8_agents_is_structured_error(self):
         agents = os.path.join(self.target, "AGENTS.md")
         with open(agents, "wb") as f:

@@ -5,11 +5,11 @@ description: 実行側のモデル割り当てを決める、頭のモデルを�
 
 # モデルの割り当てと切替
 
-詳しくは https://github.com/aoaibiz/muse-opencode-go-kit/blob/main/docs/MODEL-SWAP.md にあります。要点は次のとおりです。
+詳しくは https://github.com/aoaibiz/muse-opencode-go-kit/blob/d2e6bd388007527c1fe34e03fe0a05c7c5773a28/docs/MODEL-SWAP.md にあります。要点は次のとおりです。
 
 ## 割り当て
 
-- 作業の種類（実装・調査・設計と最終判断・レビュー）ごとにモデルを割り当て、表に残します（例：https://github.com/aoaibiz/muse-opencode-go-kit/blob/main/templates/model-routing.example.md）。
+- 作業の種類（実装・調査・設計と最終判断・レビュー）ごとにモデルを割り当て、表に残します（例：https://github.com/aoaibiz/muse-opencode-go-kit/blob/d2e6bd388007527c1fe34e03fe0a05c7c5773a28/templates/model-routing.example.md）。
 - 既定は安価なモデルです。上位モデルへの切り替え条件（検証の失敗回数、設計判断が必要な場面）を先に決めます。再試行と切り替えの回数には上限を設けます。
 - レビュー担当は実装担当と別のモデルにします。
 

@@ -87,11 +87,23 @@ def load_manifest(kit_dir):
     return manifest
 
 
+def validate_payload_rel(rel):
+    parts = rel.split("/")
+    if rel.startswith("/") or "\\" in rel or any(p in ("", ".", "..") for p in parts):
+        raise KitError("MANIFEST_BROKEN", "load", "manifest のパスが不正です: " + rel)
+    if rel == "AGENTS.md":
+        return
+    if len(parts) == 3 and parts[0] == "skills" and parts[2] == "SKILL.md":
+        return
+    raise KitError("MANIFEST_BROKEN", "load", "manifest に許可されていない配置先があります: " + rel)
+
+
 def payload_files(kit_dir):
     """manifest の files キー（payload/ からの相対パス）→ 実パス。"""
     manifest = load_manifest(kit_dir)
     files = {}
     for rel in manifest["files"]:
+        validate_payload_rel(rel)
         files[rel] = os.path.join(kit_dir, "payload", *rel.split("/"))
     return manifest, files
 
@@ -118,7 +130,12 @@ def state_dir(target_dir):
 
 
 def load_state(target_dir):
-    spath = os.path.join(state_dir(target_dir), "state.json")
+    sd = state_dir(target_dir)
+    if os.path.islink(sd):
+        raise KitError("SYMLINK_REFUSED", "load", "状態ディレクトリがシンボリックリンクです")
+    spath = os.path.join(sd, "state.json")
+    if os.path.islink(spath):
+        raise KitError("SYMLINK_REFUSED", "load", "状態記録がシンボリックリンクです")
     if not os.path.isfile(spath):
         return None
     try:
@@ -132,8 +149,11 @@ def load_state(target_dir):
 
 
 def save_state(target_dir, state):
+    sd = ensure_state_dir(target_dir)
+    spath = os.path.join(sd, "state.json")
+    assert_safe_path(target_dir, spath, "state.json")
     write_bytes_atomic(
-        os.path.join(state_dir(target_dir), "state.json"),
+        spath,
         json.dumps(state, ensure_ascii=False, indent=2).encode("utf-8"),
     )
 
@@ -169,15 +189,47 @@ def check_parent_links(target_dir, dest, rel):
         current = nxt
 
 
+def assert_safe_path(target_dir, path, label):
+    """対象フォルダー内のパスであることと、リンクをたどらないことを確かめる。
+
+    配置先・状態・バックアップ・ロック・復元先の全てに同じ検査を使う。
+    """
+    if os.path.islink(path):
+        raise KitError("SYMLINK_REFUSED", "inspect", "シンボリックリンクは扱いません: " + label)
+    check_parent_links(target_dir, path, label)
+    real_target = os.path.realpath(target_dir)
+    real_path = os.path.realpath(path)
+    try:
+        inside = os.path.commonpath([real_target, real_path]) == real_target
+    except ValueError:
+        inside = False
+    if not inside:
+        raise KitError("PATH_OUTSIDE_TARGET", "inspect", "対象フォルダーの外を指しています: " + label)
+
+
+def ensure_state_dir(target_dir):
+    """状態ディレクトリを安全に用意する（所有者だけが入れる 0700）。"""
+    sd = state_dir(target_dir)
+    if os.path.islink(sd):
+        raise KitError("SYMLINK_REFUSED", "inspect", "状態ディレクトリがシンボリックリンクです")
+    if os.path.isdir(sd):
+        assert_safe_path(target_dir, sd, STATE_DIR_NAME)
+        return sd
+    os.makedirs(sd, mode=0o700)
+    try:
+        os.chmod(sd, 0o700)
+    except OSError:
+        pass
+    return sd
+
+
 def compute_plan(kit_dir, target_dir):
     manifest, files = check_payload_checksums(kit_dir)
     plan = []
     payload_agents = read_bytes(files["AGENTS.md"]).decode("utf-8")
     for rel in sorted(files):
         dest = target_paths(target_dir, rel)
-        if os.path.islink(dest):
-            raise KitError("SYMLINK_REFUSED", "inspect", "配置先がシンボリックリンクです: " + rel)
-        check_parent_links(target_dir, dest, rel)
+        assert_safe_path(target_dir, dest, rel)
         if rel == "AGENTS.md":
             if os.path.isfile(dest):
                 current = decode_utf8(read_bytes(dest), rel)
@@ -220,7 +272,9 @@ def compute_plan(kit_dir, target_dir):
 
 
 def acquire_lock(target_dir):
-    lock = os.path.join(state_dir(target_dir), "lock")
+    sd = ensure_state_dir(target_dir)
+    lock = os.path.join(sd, "lock")
+    assert_safe_path(target_dir, lock, "lock")
     try:
         os.makedirs(lock)
     except FileExistsError:
@@ -245,9 +299,11 @@ def cmd_plan(kit_dir, target_dir):
 def cmd_apply(kit_dir, target_dir):
     manifest, plan = compute_plan(kit_dir, target_dir)
     _, files = payload_files(kit_dir)
-    os.makedirs(state_dir(target_dir), exist_ok=True)
+    ensure_state_dir(target_dir)
     lock = acquire_lock(target_dir)
-    backup_dir = os.path.join(state_dir(target_dir), "backup")
+    backup_dir = os.path.join(ensure_state_dir(target_dir), "backup")
+    if os.path.islink(backup_dir):
+        raise KitError("SYMLINK_REFUSED", "inspect", "バックアップ先がシンボリックリンクです")
     state = load_state(target_dir) or {"files": {}}
     state["status"] = "PARTIAL"
     state["version"] = manifest["version"]
@@ -267,9 +323,17 @@ def cmd_apply(kit_dir, target_dir):
                 save_state(target_dir, state)
                 continue
             bpath = os.path.join(backup_dir, *rel.split("/"))
-            if os.path.isfile(dest) and not os.path.isfile(bpath):
-                os.makedirs(os.path.dirname(bpath), exist_ok=True)
+            assert_safe_path(target_dir, bpath, "backup/" + rel)
+            if os.path.isfile(dest) and not os.path.lexists(bpath):
+                import stat as stat_mod
+                parent = os.path.dirname(bpath)
+                os.makedirs(parent, mode=0o700, exist_ok=True)
+                try:
+                    os.chmod(parent, 0o700)
+                except OSError:
+                    pass
                 shutil.copyfile(dest, bpath)
+                os.chmod(bpath, stat_mod.S_IMODE(os.stat(dest).st_mode))
             if rel == "AGENTS.md":
                 block = render_block(payload_agents)
                 if action == "create":
@@ -317,6 +381,7 @@ def cmd_verify(kit_dir, target_dir):
         if rel == "AGENTS.md":
             continue
         d = target_paths(target_dir, rel)
+        assert_safe_path(target_dir, d, rel)
         if not os.path.isfile(d):
             problems.append("ファイルがありません: " + rel)
         elif sha256_bytes(read_bytes(d)) != manifest["files"][rel]:
@@ -333,10 +398,16 @@ def restore_from_backup(kit_dir, target_dir):
     state = load_state(target_dir)
     if state is None:
         raise KitError("NOT_INSTALLED", "rollback", "導入の記録がありません")
-    backup_dir = os.path.join(state_dir(target_dir), "backup")
+    backup_dir = os.path.join(ensure_state_dir(target_dir), "backup")
+    if os.path.islink(backup_dir):
+        raise KitError("SYMLINK_REFUSED", "inspect", "バックアップ先がシンボリックリンクです")
     manifest = load_manifest(kit_dir)
     existed = state.get("existed") or {}
     applied = state.get("applied_hashes") or {}
+    # 境界検査：復元・削除先とバックアップ元が対象内でリンクでないことを先に全件確かめる。
+    for rel in sorted(manifest["files"]):
+        assert_safe_path(target_dir, target_paths(target_dir, rel), rel)
+        assert_safe_path(target_dir, os.path.join(backup_dir, *rel.split("/")), "backup/" + rel)
     # 復元前の照合：導入後に編集されたファイルがあれば、変更せず停止する。
     for rel in sorted(manifest["files"]):
         dest = target_paths(target_dir, rel)
@@ -389,8 +460,7 @@ def restore_from_backup(kit_dir, target_dir):
 
 
 def cmd_rollback(kit_dir, target_dir):
-    lock = None
-    os.makedirs(state_dir(target_dir), exist_ok=True)
+    ensure_state_dir(target_dir)
     lock = acquire_lock(target_dir)
     try:
         restore_from_backup(kit_dir, target_dir)
@@ -405,7 +475,7 @@ def cmd_recover(kit_dir, target_dir):
     if state is None or state.get("status") != "PARTIAL":
         print("recover: 復旧が必要な状態ではありません")
         return 0
-    os.makedirs(state_dir(target_dir), exist_ok=True)
+    ensure_state_dir(target_dir)
     lock = acquire_lock(target_dir)
     try:
         restore_from_backup(kit_dir, target_dir)

@@ -11,11 +11,14 @@ import re
 import sys
 
 FORBIDDEN = [
-    ("private-key", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
-    ("api-key-prefix", re.compile(r"\boc_sk_[A-Za-z0-9]")),
-    ("ipv4", re.compile(r"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
-    ("home-path", re.compile(r"/home/[A-Za-z0-9._-]+/")),
-    ("windows-user-path", re.compile(r"C:\\Users\\[A-Za-z0-9._-]+")),
+    ("private-key", re.compile(rb"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("api-key-prefix", re.compile(rb"\boc_sk_[A-Za-z0-9]")),
+    ("github-token", re.compile(rb"\b(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}")),
+    ("aws-access-key", re.compile(rb"\bAKIA[0-9A-Z]{16}\b")),
+    ("slack-token", re.compile(rb"\bxox[baprs]-[A-Za-z0-9-]{10,}")),
+    ("ipv4", re.compile(rb"\b(?:\d{1,3}\.){3}\d{1,3}\b")),
+    ("home-path", re.compile(rb"/home/[A-Za-z0-9._-]+/")),
+    ("windows-user-path", re.compile(rb"C:\\Users\\[A-Za-z0-9._-]+")),
 ]
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 
@@ -53,21 +56,23 @@ def main():
             if rel not in (manifest.get("files") or {}):
                 problems.append("manifest に載っていない payload ファイル: " + rel)
 
-    # 2. 文書リンクと混入パターンの走査
+    # 2. 混入パターンの走査（全ファイルをバイト列で調べる。拡張子で除外しない）
+    #    と、文書リンクの検査
     for dirpath, dirnames, filenames in os.walk(root):
         if ".git" in dirnames:
             dirnames.remove(".git")
+        if "__pycache__" in dirnames:
+            dirnames.remove("__pycache__")
         for name in filenames:
-            if not (name.endswith(".md") or name.endswith(".py") or name.endswith(".json") or name.endswith(".yml")):
-                continue
             full = os.path.join(dirpath, name)
             rel = os.path.relpath(full, root).replace(os.sep, "/")
-            with open(full, "r", encoding="utf-8", errors="strict") as f:
-                text = f.read()
+            with open(full, "rb") as f:
+                data = f.read()
             for label, pattern in FORBIDDEN:
-                if pattern.search(text):
+                if pattern.search(data):
                     problems.append("混入パターン %s: %s" % (label, rel))
             if name.endswith(".md"):
+                text = data.decode("utf-8")
                 for m in LINK_RE.finditer(text):
                     url = m.group(1).strip()
                     if url.startswith(("http://", "https://", "#", "mailto:")):

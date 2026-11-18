@@ -5,7 +5,7 @@ description: AI の残量（利用枠）の表示を作る・直す時に使う�
 
 # 残量をリアルタイムに読めるようにする
 
-詳しくは https://github.com/aoaibiz/muse-opencode-go-kit/blob/main/docs/WIDGET.md にあります。要点は次のとおりです。
+詳しくは https://github.com/aoaibiz/muse-opencode-go-kit/blob/d2e6bd388007527c1fe34e03fe0a05c7c5773a28/docs/WIDGET.md にあります。要点は次のとおりです。
 
 ## 原則
 
