@@ -1,0 +1,36 @@
+{
+  "categories": [
+    {
+      "icon": "📋",
+      "id": "board",
+      "items": [
+        {
+          "title": "新しい依頼の例",
+          "icon": "🆕",
+          "status": "waiting",
+          "summary": "要対応の項目は要約を1行で書く",
+          "detail": "詳しい内容。長い文は折り返して全文を表示する前提で書く。",
+          "url": "https://example.com/real-destination"
+        },
+        {
+          "title": "進んでいる依頼の例",
+          "icon": "🔄",
+          "status": "active",
+          "summary": "進行中の項目",
+          "detail": "現在の状態と次の一手。",
+          "url": "https://example.com/another-destination"
+        },
+        {
+          "title": "終わった依頼の例",
+          "icon": "✅",
+          "status": "done",
+          "summary": "完了した項目",
+          "detail": "結果と確認した証拠。",
+          "url": "https://example.com/finished-item"
+        }
+      ],
+      "title": "依頼ボード"
+    }
+  ],
+  "updatedAt": "2026-01-01T09:00:00+09:00"
+}
