@@ -44,6 +44,7 @@ Muse（またはファイルとコマンドを扱える AI エージェント）
 | [クライアント台帳](docs/CLIENT-LEDGER.md) | 案件ユーザーが溜まっていく前提の台帳（1クライアント1ファイル、型は共通） |
 | [残量ウィジェットと端末表示](docs/WIDGET.md) | 数字の取り方、行の作り方、リアルタイムの確かめ方 |
 | [モデル切替の実務](docs/MODEL-SWAP.md) | プロファイル、切替手順、地域設定とエイリアスの罠、逃げ道 |
+| [モデル運用ベストプラクティス](docs/MODEL-BEST-PRACTICE.md) | 既定モデルと格上げ、枠の運転、プランの選び方、時間帯料金、キャッシュの組み方（実測と調査から） |
 | [検証記録](docs/VERIFICATION.md) | 実績の記録と、未確認の書き方 |
 | テンプレート | [モデル振り分け](templates/model-routing.example.md)、[依頼文](templates/request.example.md)、[ダッシュボードのデータ](templates/dashboard-data.example.json)、[記憶の目次とシーン](templates/memory-organization.example.md)、[クライアント台帳](templates/client-ledger.example.md) |
 
