@@ -210,9 +210,13 @@ class InstallTest(unittest.TestCase):
         os.chmod(backup_dir, 0o755)
         os.chmod(backup_file, 0o644)
         self.apply()
-        self.assertEqual(stat_mod.S_IMODE(os.stat(sd).st_mode), 0o700)
-        self.assertEqual(stat_mod.S_IMODE(os.stat(backup_dir).st_mode), 0o700)
-        self.assertEqual(stat_mod.S_IMODE(os.stat(backup_file).st_mode), 0o600)
+        # 権限ビットの値は POSIX 前提（Windows の chmod は読み取り専用属性しか
+        # 変えられず、stat も実ビットを返さないため、値そのものは確かめられない）。
+        # Windows では移行の成否を、この後の verify / rollback の成功で確かめる。
+        if os.name != "nt":
+            self.assertEqual(stat_mod.S_IMODE(os.stat(sd).st_mode), 0o700)
+            self.assertEqual(stat_mod.S_IMODE(os.stat(backup_dir).st_mode), 0o700)
+            self.assertEqual(stat_mod.S_IMODE(os.stat(backup_file).st_mode), 0o600)
         r = run_install("verify", "--target", self.target)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         r = run_install("rollback", "--target", self.target)
