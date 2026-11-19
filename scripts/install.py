@@ -527,7 +527,23 @@ def cmd_recover(kit_dir, target_dir):
     return 0
 
 
+def force_utf8_stdio():
+    """標準出力・標準エラー出力の文字コードを UTF-8 にそろえる。
+
+    Windows のロケール（cp1252 など）では、パイプへ向けた標準出力の
+    既定がロケールの文字コードになり、日本語の案内を print した時に
+    UnicodeEncodeError で落ちて終了コードまで変わってしまう。案内文は
+    日本語が正なので、環境の既定に任せず UTF-8 で出す。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None):
+    force_utf8_stdio()
     parser = argparse.ArgumentParser(description="Muse Window × OpenCode Go Kit installer")
     parser.add_argument("command", choices=["plan", "apply", "verify", "rollback", "recover"])
     parser.add_argument("--target", required=True)

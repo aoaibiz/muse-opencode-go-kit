@@ -28,7 +28,23 @@ def sha256_file(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def force_utf8_stdio():
+    """標準出力・標準エラー出力の文字コードを UTF-8 にそろえる。
+
+    Windows のロケール（cp1252 など）では、パイプへ向けた標準出力の
+    既定がロケールの文字コードになり、日本語の検査結果を print した
+    時に UnicodeEncodeError で落ちて、結果の行そのものが出なくなる。
+    結果は日本語が正なので、環境の既定に任せず UTF-8 で出す。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main():
+    force_utf8_stdio()
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     if "--root" in sys.argv:
         root = os.path.abspath(sys.argv[sys.argv.index("--root") + 1])
